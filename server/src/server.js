@@ -559,19 +559,49 @@ if (typeof(req.body) === 'string') {
     var author = req.body.author;
     var feedItemId = req.params.feeditemid;
     if (fromUser === author) {
-      var feedItem = readDocument('feedItems', feedItemId);
-      // Initialize likeCounter to empty.
       comment.likeCounter = [];
-      // Push returns the new length of the array.
-      // The index of the new element is the length of the array minus 1.
-      // Example: [].push(1) returns 1, but the index of the new element is 0.
-      var index = feedItem.comments.push(comment) - 1;
-      writeDocument('feedItems', feedItem);
+      comment.author = new ObjectID(comment.author);
+      db.collection('feedItems').updateOne({ _id: new ObjectID(feedItemId) },
+      {
+        // in the array.
+        $push: {
+          comments: comment
+        }
+      }, function(err) {
+        if (err) {
+          return sendDatabaseError(res, err);
+        }
+        else {
+          // Step 2: Get the feed item.
+          db.collection('feedItems').findOne({ _id: new ObjectID(feedItemId) }, function(err, feedItem) {
+            if (err) {
+              return sendDatabaseError(res, err);
+            }
+            console.log(feedItem);
+            res.status(201);
+            //res.set('Location', '/feeditem/' + feedItemId + "/comments/" +(feedItem.comments.length-1));
+            //res.set('Location', '/feeditem/:feeditemid/comments');
+            // Send the update!
+            getFeedItem(new ObjectID(feedItemId), function(err, f_i) {
+              if (err) {
+                return sendDatabaseError(res, err);
+              }
+              else {
+                res.send(f_i);
+              }
+              });
+      });
+    }
+      });
+
+
+
+
       // 201: Created.
-      res.status(201);
-      res.set('Location', '/feeditem/' + feedItemId + "/comments/" + index);
+      //res.status(201);
+    //  res.set('Location', '/feeditem/' + feedItemId + "/comments/" + index);
       // Return a resolved version of the feed item.
-      res.send(getFeedItemSync(feedItemId));
+
     } else {
       // Unauthorized.
       res.status(401).end();
@@ -580,21 +610,49 @@ if (typeof(req.body) === 'string') {
 
   app.put('/feeditem/:feeditemid/comments/:commentindex/likelist/:userid', function(req, res) {
     var fromUser = getUserIdFromToken(req.get('Authorization'));
-    var userId = parseInt(req.params.userid, 10);
-    var feedItemId = parseInt(req.params.feeditemid, 10);
-    var commentIdx = parseInt(req.params.commentindex, 10);
+    var userId = req.params.userid;
+    var feedItemId = new ObjectID(req.params.feeditemid);
+    var commentIdx = req.params.commentindex;
     // Only a user can mess with their own like.
     if (fromUser === userId) {
-      var feedItem = readDocument('feedItems', feedItemId);
-      var comment = feedItem.comments[commentIdx];
-      // Only change the likeCounter if the user isn't in it.
-      if (comment.likeCounter.indexOf(userId) === -1) {
-        comment.likeCounter.push(userId);
-      }
-      writeDocument('feedItems', feedItem);
-      comment.author = readDocument('users', comment.author);
+
+      // var feedItem = readDocument('feedItems', feedItemId);
+      // var comment = feedItem.comments[commentIdx];
+      // // Only change the likeCounter if the user isn't in it.
+      // if (comment.likeCounter.indexOf(userId) === -1) {
+      //   comment.likeCounter.push(userId);
+      // }
+      // writeDocument('feedItems', feedItem);
+      // comment.author = readDocument('users', comment.author);
       // Send back the updated comment.
-      res.send(comment);
+      // res.send(comment);
+      var key = 'comments.' + commentIdx+'.likeCounter';
+      var m = {"$addToSet": {}};
+      m["$addToSet"][key] = new ObjectID(userId);
+      db.collection('feedItems').updateOne({ _id: feedItemId },
+      m, function(err) {
+          if (err) {
+            return sendDatabaseError(res, err);
+          }
+          db.collection('feedItems').findOne({ _id: new ObjectID(feedItemId) }, function(err, feedItem) {
+            if (err) {
+              return sendDatabaseError(res, err);
+            }
+            //console.log(feedItem);
+            res.status(201);
+            //res.set('Location', '/feeditem/' + feedItemId + "/comments/" +(feedItem.comments.length-1));
+            //res.set('Location', '/feeditem/:feeditemid/comments');
+            // Send the update!
+            getFeedItem(new ObjectID(feedItemId), function(err, f_i) {
+              if (err) {
+                return sendDatabaseError(res, err);
+              }
+              else {
+                res.send(f_i.comments[commentIdx]);
+              }
+              });
+      });
+      });
     } else {
       // Unauthorized.
       res.status(401).end();
@@ -603,20 +661,51 @@ if (typeof(req.body) === 'string') {
 
   app.delete('/feeditem/:feeditemid/comments/:commentindex/likelist/:userid', function(req, res) {
     var fromUser = getUserIdFromToken(req.get('Authorization'));
-    var userId = parseInt(req.params.userid, 10);
-    var feedItemId = parseInt(req.params.feeditemid, 10);
-    var commentIdx = parseInt(req.params.commentindex, 10);
+    var userId = req.params.userid;
+    var feedItemId = new ObjectID(req.params.feeditemid);
+    var commentIdx = req.params.commentindex;
     // Only a user can mess with their own like.
+    // $pull: {
+    //   likeCounter: new ObjectID(userId)
+    // }
     if (fromUser === userId) {
-      var feedItem = readDocument('feedItems', feedItemId);
-      var comment = feedItem.comments[commentIdx];
-      var userIndex = comment.likeCounter.indexOf(userId);
-      if (userIndex !== -1) {
-        comment.likeCounter.splice(userIndex, 1);
-        writeDocument('feedItems', feedItem);
-      }
-      comment.author = readDocument('users', comment.author);
-      res.send(comment);
+      var key = 'comments.' + commentIdx+'.likeCounter';
+      var m = {"$pull": {}};
+      m["$pull"][key] = new ObjectID(userId);
+      db.collection('feedItems').updateOne({ _id: feedItemId },
+      m, function(err) {
+          if (err) {
+            return sendDatabaseError(res, err);
+          }
+          db.collection('feedItems').findOne({ _id: new ObjectID(feedItemId) }, function(err, feedItem) {
+            if (err) {
+              return sendDatabaseError(res, err);
+            }
+            //console.log(feedItem);
+            res.status(201);
+            //res.set('Location', '/feeditem/' + feedItemId + "/comments/" +(feedItem.comments.length-1));
+            //res.set('Location', '/feeditem/:feeditemid/comments');
+            // Send the update!
+            getFeedItem(new ObjectID(feedItemId), function(err, f_i) {
+              if (err) {
+                return sendDatabaseError(res, err);
+              }
+              else {
+                res.send(f_i.comments[commentIdx]);
+              }
+              });
+      });
+      });
+
+      // var feedItem = readDocument('feedItems', feedItemId);
+      // var comment = feedItem.comments[commentIdx];
+      // var userIndex = comment.likeCounter.indexOf(userId);
+      // if (userIndex !== -1) {
+      //   comment.likeCounter.splice(userIndex, 1);
+      //   writeDocument('feedItems', feedItem);
+      // }
+      // comment.author = readDocument('users', comment.author);
+      // res.send(comment);
     } else {
       // Unauthorized.
       res.status(401).end();
